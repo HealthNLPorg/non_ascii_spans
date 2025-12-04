@@ -1,4 +1,6 @@
 import argparse
+import os
+import re
 from collections.abc import Iterable
 import operator
 from itertools import groupby
@@ -28,7 +30,7 @@ def find_bad_spans(problem_string: str) -> Iterable[tuple[int, int]]:
 
 def visualize_problem_spans(
     problem_string: str, problem_spans: Iterable[tuple[int, int]]
-) -> None:
+) -> str:
     def visualize_span(begin: int, end: int) -> str:
         ellipsis = "..."
         context_begin = max(0, begin - 15)
@@ -38,9 +40,9 @@ def visualize_problem_spans(
         postfix = f"</NON_ASCII>{problem_string[context_begin:begin]}{ellipsis if context_end < len(problem_string) else ''}"
         return f"{prefix}{problem_string[begin:end]}{postfix}"
 
-    for problem_span in find_bad_spans(problem_string):
-        begin, end = problem_span
-        print(visualize_span(begin, end))
+    return "\n".join(
+        visualize_span(*problem_span) for problem_span in find_bad_spans(problem_string)
+    )
 
 
 @dataclass
@@ -49,35 +51,79 @@ class ProblemFile:
     bad_paragraph_indices: list[int]
     bad_paragraphs: list[str]
 
+    @staticmethod
+    def __visualize_paragraph(paragraph: str, index: int) -> str:
+        problem_spans = find_bad_spans(paragraph)
+        return f"\nPARAGRAPH {index} TEXT:\n{paragraph}\nPARAGRAPH {index} PROBLEMS:\n{visualize_problem_spans(paragraph, problem_spans)}\n"
 
-def parse_problem_file_from_line(line: str) -> ProblemFile:
-    def get_filename(_line: str) -> str:
-        return ""
+    def visualize(self) -> str:
+        def __local_viz(paragraph: str, index: int) -> str:
+            return f"\nFile {self.filename} - {ProblemFile.__visualize_paragraph(paragraph, index)}"
 
-    def get_bad_paragraph_inds(_line: str) -> list[int]:
-        return []
+        return "".join(
+            __local_viz(paragraph, index)
+            for paragraph, index in zip(self.bad_paragraphs, self.bad_paragraph_indices)
+        )
 
-    return ProblemFile(
-        filename=get_filename(line),
-        bad_paragraph_indices=get_bad_paragraph_inds(line),
+
+def parse_problem_file_from_line(line: str) -> tuple[str, ProblemFile]:
+    filename = line.strip().split()[-1]
+    core = line.split("-")[-1].strip()
+    raw_list_str = core.split("of")[0].strip().removeprefix("Failed paragraphs")
+    bad_paragraph_indices = [int(elem) for elem in raw_list_str.strip().split(",")]
+    return filename, ProblemFile(
+        filename=filename,
+        bad_paragraph_indices=bad_paragraph_indices,
         bad_paragraphs=[],
     )
 
 
-def parse_log_for_problem_files(log_file: str) -> set[ProblemFile]:
+def parse_log_for_fn_to_problem_file(log_file: str) -> dict[str, ProblemFile]:
     def is_relevant(line: str) -> bool:
-        return False
+        return "Failed paragraphs" in line
 
-    problem_files = set()
+    fn_to_problem_file = {}
     with open(log_file, mode="r") as f:
         for line in f:
             if is_relevant(line):
-                problem_files.add(parse_problem_file_from_line(line))
-    return problem_files
+                fn, problem_file = parse_problem_file_from_line(line)
+                fn_to_problem_file[fn] = problem_file
+    return fn_to_problem_file
+
+
+def get_offending_paragraphs(
+    source_path: str, offending_indices: list[int]
+) -> list[str]:
+    print(offending_indices)
+    with open(source_path, mode="r") as f:
+        raw = f.read()
+        paragraphs = re.split(r"(\n[\t\r ]*){2,}", raw)
+    print(paragraphs)
+    # print(raw)
+    return [paragraphs[ind] for ind in offending_indices]
+
+
+def populate_problem_files_with_offending_paragraphs(
+    fn_to_problem_file: dict[str, ProblemFile], source_dir: str
+) -> Iterable[ProblemFile]:
+    for fn in os.listdir(source_dir):
+        if fn in fn_to_problem_file:
+            problem_file = fn_to_problem_file[fn]
+            problem_file.bad_paragraphs = get_offending_paragraphs(
+                os.path.join(source_dir, fn), problem_file.bad_paragraph_indices
+            )
+            yield problem_file
 
 
 def process(log_file: str, source_dir: str) -> None:
-    pass
+    eq_buffer = "=" * 100
+    fn_to_problem_file = parse_log_for_fn_to_problem_file(log_file)
+    for problem_file in populate_problem_files_with_offending_paragraphs(
+        fn_to_problem_file, source_dir
+    ):
+        print(eq_buffer)
+        print(problem_file.visualize())
+        print(eq_buffer)
 
 
 def main() -> None:
