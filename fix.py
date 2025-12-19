@@ -17,13 +17,14 @@ parser.add_argument(
 @lru_cache
 def relevant_unicode_category(category: str) -> bool:
     return category !="So" and not category.startswith("C")
-
+# 7718598003.txt
 @lru_cache
 def relevant_character(char: str) -> bool:
-    if char in string.printable:
-        return True
-    category = unicodedata.category(char)
-    return relevant_unicode_category(category)
+    return char in string.printable
+    # if char in string.printable:
+    #     return True
+    # category = unicodedata.category(char)
+    # return relevant_unicode_category(category)
 
 def process(source_dir: str, target_dir: str) -> None:
     for fn in os.listdir(source_dir):
@@ -31,7 +32,8 @@ def process(source_dir: str, target_dir: str) -> None:
             open(os.path.join(source_dir, fn), mode="r") as source_f,
             open(os.path.join(target_dir, fn), mode="w") as target_f,
         ):
-            target_f.write("".join(char for char in source_f.read() if relevant_character(char)))
+            # target_f.write("".join(char for char in source_f.read() if relevant_character(char)))
+            target_f.write("".join(source_f.read().encode("ascii", errors="ignore").decode()))
 
 
 def main() -> None:
