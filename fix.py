@@ -3,6 +3,11 @@ import string
 import argparse
 from functools import lru_cache
 import unicodedata
+from collections import deque
+from collections.abc import Iterable
+import pathlib
+from polars import pl
+
 
 parser = argparse.ArgumentParser(description="")
 parser.add_argument(
@@ -14,26 +19,58 @@ parser.add_argument(
     type=str,
 )
 
+
 @lru_cache
 def relevant_unicode_category(category: str) -> bool:
-    return category !="So" and not category.startswith("C")
-# 7718598003.txt
+    return category != "So" and not category.startswith("C")
+
+
 @lru_cache
 def relevant_character(char: str) -> bool:
-    return char in string.printable
-    # if char in string.printable:
-    #     return True
-    # category = unicodedata.category(char)
-    # return relevant_unicode_category(category)
+    if char in string.printable:
+        return True
+    category = unicodedata.category(char)
+    return relevant_unicode_category(category)
+
+
+def make_directory(dirname: str) -> None:
+    pathlib.Path(dirname).mkdir(parents=True, exist_ok=True)
+
 
 def process(source_dir: str, target_dir: str) -> None:
+    fns = deque()
+    offset_map_strs = deque()
     for fn in os.listdir(source_dir):
         with (
             open(os.path.join(source_dir, fn), mode="r") as source_f,
-            open(os.path.join(target_dir, fn), mode="w") as target_f,
+            open(os.path.join(target_dir, fn), mode="w", encoding="utf-8") as target_f,
         ):
-            # target_f.write("".join(char for char in source_f.read() if relevant_character(char)))
-            target_f.write("".join(source_f.read().encode("ascii", errors="ignore").decode()))
+            fixed_contents, offset_map = get_character_map_and_string(source_f.read())
+            target_f.write(fixed_contents)
+        fns.append(fn)
+        offset_map_strs.append(offsets_to_str(offset_map))
+
+
+def get_character_map_and_string(
+    raw_string: str,
+) -> tuple[str, Iterable[tuple[int, int]]]:
+    current = 0
+    relevant_characters = deque()
+    relevant_character_to_original = deque()
+    for idx, char in enumerate(raw_string):
+        if relevant_character(char):
+            relevant_character_to_original.append((idx, current))
+            relevant_characters.append(char)
+            current += 1
+    return "".join(relevant_characters), relevant_character_to_original
+
+
+def offsets_to_str(offset_iter: Iterable[tuple[int, int]]) -> str:
+    def offset_to_str(offsets: tuple[int, int]) -> str:
+        begin, end = offsets
+        return f"{begin}_{end}"
+
+    return ",".join(map(offset_to_str, offset_iter))
 
 
 def main() -> None:
