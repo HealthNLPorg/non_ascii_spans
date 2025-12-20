@@ -88,7 +88,7 @@ def offsets_to_str(offset_iter: Iterable[tuple[int, int]]) -> str:
 
 
 def process(source_dir: str, target_dir: str) -> None:
-    fns_offset_map_strs = deque()
+    report_ids_offset_map_strs = deque()
     notes_dir = os.path.join(target_dir, "notes")
     make_directory(notes_dir)
     total_files_with_printable_character_issues = 0
@@ -101,7 +101,7 @@ def process(source_dir: str, target_dir: str) -> None:
             fixed_contents, offset_map = get_character_map_and_string(source_f.read())
             target_f.write(fixed_contents)
         report_id = int(fn.split(".")[0])
-        fns_offset_map_strs.append((report_id, offsets_to_str(offset_map)))
+        report_ids_offset_map_strs.append((report_id, offsets_to_str(offset_map)))
         total_files_with_printable_character_issues += log_problem_indices(
             report_id, offset_map
         )
@@ -110,8 +110,10 @@ def process(source_dir: str, target_dir: str) -> None:
         total_files_with_printable_character_issues,
         len(files),
     )
-    fn_iter, offsets_iter = unzip(sorted(fns_offset_map_strs, key=itemgetter(0)))
-    pl.DataFrame({"fn": fn_iter, "offset": offsets_iter}).write_csv(
+    report_id_iter, offsets_iter = unzip(
+        sorted(report_ids_offset_map_strs, key=itemgetter(0))
+    )
+    pl.DataFrame({"report_id": report_id_iter, "offset": offsets_iter}).write_csv(
         os.path.join(target_dir, "offset_map.tsv"), separator="\t"
     )
 
